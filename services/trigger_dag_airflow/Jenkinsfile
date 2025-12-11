@@ -3,30 +3,29 @@ pipeline {
 
   parameters {
     string(
-      name: 'USER_REPO_URL',
-      defaultValue: '',
-      description: 'Git URL of the spoke repo (e.g., https://github.com/org/team-repo.git)'
-    )
-    string(
-      name: 'USER_REPO_BRANCH',
-      defaultValue: 'main',
-      description: 'Branch to checkout from spoke repo'
+      name: 'DAG_ID',
+      defaultValue: 'team_a_dev_iris_pipeline',
+      description: 'Airflow DAG ID to trigger'
     )
     choice(
       name: 'ENV',
       choices: ['dev', 'stage', 'prod'],
-      description: 'Target environment'
+      description: 'Logical environment label (for conf tagging)'
     )
     string(
-      name: 'TRIGGERING_USER',
+      name: 'RUN_ID_PREFIX',
+      defaultValue: 'jenkins_manual',
+      description: 'Prefix for dag_run_id (timestamp is appended)'
+    )
+    text(
+      name: 'DAG_CONF_JSON',
       defaultValue: '',
-      description: 'User id (mock AD principal or Jenkins user)'
+      description: 'Optional JSON for dag_run.conf (leave empty to use default)'
     )
   }
 
   environment {
-    SHARED_DAG_DIR = '/shared/airflow_dags'
-    SPOKE_DIR      = 'spoke_repo'
+    AIRFLOW_BASE_URL = "http://airflow-webserver:8080"
   }
 
   stages {
@@ -36,62 +35,28 @@ pipeline {
       }
     }
 
-    stage('Auth: AD Groups via Python') {
+    stage('Trigger Airflow DAG via Python') {
       steps {
-        sh """
-          echo "Running authz.py for user=${TRIGGERING_USER}, env=${ENV}"
-          python3 scripts/authz.py \\
-            --env ${ENV} \\
-            --user ${TRIGGERING_USER} \\
-            --action deploy_dag \\
-            --base-dir .
-        """
-      }
-    }
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'airflow-basic-auth',
+            usernameVariable: 'AIRFLOW_USERNAME',
+            passwordVariable: 'AIRFLOW_PASSWORD'
+          )
+        ]) {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
 
-    stage('Checkout Spoke Repo') {
-      steps {
-        sh """
-          if [ -z "${USER_REPO_URL}" ]; then
-            echo "USER_REPO_URL is required"
-            exit 1
-          fi
+            cd "${WORKSPACE}"
 
-          echo "Cloning spoke repo ${USER_REPO_URL} (branch ${USER_REPO_BRANCH})"
-          rm -rf ${SPOKE_DIR}
-          git clone --branch ${USER_REPO_BRANCH} ${USER_REPO_URL} ${SPOKE_DIR}
-        """
-      }
-    }
-
-    stage('Validate project.json & DAG structure') {
-      steps {
-        sh """
-          echo "Validating project.json and DAG layout for env ${ENV}"
-          python3 scripts/validate_project.py --env ${ENV} --spoke-dir ${SPOKE_DIR}
-        """
-      }
-    }
-
-    stage('Deploy DAGs to Airflow') {
-      steps {
-        script {
-          def manifestText = readFile("${SPOKE_DIR}/project.json")
-          def manifest = readJSON(text: manifestText)
-          def projectName = manifest.project_name
-          def dagPath = manifest.dag_path
-
-          sh """
-            echo "Deploying DAGs for project ${projectName} to Airflow env ${ENV}"
-            SRC_DAG_DIR=${SPOKE_DIR}/${dagPath}
-            DEST_DAG_DIR=${SHARED_DAG_DIR}/${ENV}/${projectName}
-
-            mkdir -p ${DEST_DAG_DIR}
-            cp -r ${SRC_DAG_DIR}/*.py ${DEST_DAG_DIR}/
-
-            echo "Files now in ${DEST_DAG_DIR}:"
-            ls -R ${DEST_DAG_DIR}
-          """
+            echo "==> Running Python DAG trigger"
+            python3 scripts/trigger_airflow_dag.py \
+              --airflow-base-url "${AIRFLOW_BASE_URL}" \
+              --dag-id "${DAG_ID}" \
+              --env "${ENV}" \
+              --run-id-prefix "${RUN_ID_PREFIX}" \
+              ${DAG_CONF_JSON:+"--conf-json ${DAG_CONF_JSON}"}
+          '''
         }
       }
     }
@@ -99,10 +64,10 @@ pipeline {
 
   post {
     success {
-      echo "DAG deployment successful for ${ENV} from ${USER_REPO_URL}"
+      echo "SUCCESS: Triggered DAG ${params.DAG_ID} in env=${params.ENV}"
     }
     failure {
-      echo "DAG deployment FAILED for ${ENV} from ${USER_REPO_URL}"
+      echo "FAILURE: Could not trigger DAG ${params.DAG_ID}"
     }
   }
 }
