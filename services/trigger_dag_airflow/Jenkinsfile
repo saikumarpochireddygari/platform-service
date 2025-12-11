@@ -19,7 +19,7 @@ pipeline {
     )
     string(
       name: 'TRIGGERING_USER',
-      defaultValue: 'alice',
+      defaultValue: '',
       description: 'User id (mock AD principal or Jenkins user)'
     )
   }
