@@ -39,10 +39,10 @@ pipeline {
     stage('Auth: AD Groups via Python') {
       steps {
         sh """
-          echo "Running authz.py for user=${TRIGGERING_USER}, env=${ENV}"
+          echo "Running authz.py for user=${params.TRIGGERING_USER}, env=${params.ENV}"
           python3 scripts/authz.py \\
-            --env ${ENV} \\
-            --user ${TRIGGERING_USER} \\
+            --env ${params.ENV} \\
+            --user ${params.TRIGGERING_USER} \\
             --action deploy_dag \\
             --base-dir .
         """
@@ -51,15 +51,15 @@ pipeline {
 
     stage('Checkout Spoke Repo') {
       steps {
+        script {
+          if (!params.USER_REPO_URL?.trim()) {
+            error "USER_REPO_URL is required"
+          }
+        }
         sh """
-          if [ -z "${USER_REPO_URL}" ]; then
-            echo "USER_REPO_URL is required"
-            exit 1
-          fi
-
-          echo "Cloning spoke repo ${USER_REPO_URL} (branch ${USER_REPO_BRANCH})"
-          rm -rf ${SPOKE_DIR}
-          git clone --branch ${USER_REPO_BRANCH} ${USER_REPO_URL} ${SPOKE_DIR}
+          echo "Cloning spoke repo ${params.USER_REPO_URL} (branch ${params.USER_REPO_BRANCH})"
+          rm -rf ${env.SPOKE_DIR}
+          git clone --branch ${params.USER_REPO_BRANCH} ${params.USER_REPO_URL} ${env.SPOKE_DIR}
         """
       }
     }
@@ -67,8 +67,8 @@ pipeline {
     stage('Validate project.json & DAG structure') {
       steps {
         sh """
-          echo "Validating project.json and DAG layout for env ${ENV}"
-          python3 scripts/validate_project.py --env ${ENV} --spoke-dir ${SPOKE_DIR}
+          echo "Validating project.json and DAG layout for env ${params.ENV}"
+          python3 scripts/validate_project.py --env ${params.ENV} --spoke-dir ${env.SPOKE_DIR}
         """
       }
     }
@@ -76,21 +76,34 @@ pipeline {
     stage('Deploy DAGs to Airflow') {
       steps {
         script {
-          def manifestText = readFile("${SPOKE_DIR}/project.json")
-          def manifest = readJSON(text: manifestText)
+          // Read project.json from the spoke repo
+          def manifestText = readFile("${env.SPOKE_DIR}/project.json")
+          def manifest     = readJSON(text: manifestText)
+
           def projectName = manifest.project_name
-          def dagPath = manifest.dag_path
+          def dagPath     = manifest.dag_path
+
+          if (!projectName) {
+            error "project_name is missing in project.json"
+          }
+          if (!dagPath) {
+            error "dag_path is missing in project.json"
+          }
+
+          // Build source & destination DAG dirs
+          def srcDagDir  = "${env.SPOKE_DIR}/${dagPath}"
+          def destDagDir = "${env.SHARED_DAG_DIR}/${params.ENV}/${projectName}"
+
+          echo "Deploying DAGs for project ${projectName}"
+          echo "Source DAG dir: ${srcDagDir}"
+          echo "Destination DAG dir: ${destDagDir}"
 
           sh """
-            echo "Deploying DAGs for project ${projectName} to Airflow env ${ENV}"
-            SRC_DAG_DIR=${SPOKE_DIR}/${dagPath}
-            DEST_DAG_DIR=${SHARED_DAG_DIR}/${ENV}/${projectName}
+            mkdir -p '${destDagDir}'
+            cp -r '${srcDagDir}'/*.py '${destDagDir}/'
 
-            mkdir -p ${DEST_DAG_DIR}
-            cp -r ${SRC_DAG_DIR}/*.py ${DEST_DAG_DIR}/
-
-            echo "Files now in ${DEST_DAG_DIR}:"
-            ls -R ${DEST_DAG_DIR}
+            echo "Files now in ${destDagDir}:"
+            ls -R '${destDagDir}'
           """
         }
       }
@@ -99,10 +112,10 @@ pipeline {
 
   post {
     success {
-      echo "DAG deployment successful for ${ENV} from ${USER_REPO_URL}"
+      echo "DAG deployment successful for ${params.ENV} from ${params.USER_REPO_URL}"
     }
     failure {
-      echo "DAG deployment FAILED for ${ENV} from ${USER_REPO_URL}"
+      echo "DAG deployment FAILED for ${params.ENV} from ${params.USER_REPO_URL}"
     }
   }
 }
