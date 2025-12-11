@@ -1,0 +1,6 @@
+groups:
+  model_publishers_prod:
+    description: "Users allowed to deploy DAGs to prod"
+    members:
+      - mlops_lead
+      - risk_officer

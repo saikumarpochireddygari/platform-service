@@ -1,0 +1,10 @@
+groups:
+  data_science_stage:
+    description: "DS users allowed to deploy DAGs to stage"
+    members:
+      - alice
+
+  platform_approvers_stage:
+    description: "Platform approvers for stage"
+    members:
+      - mlops_lead

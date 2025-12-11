@@ -1,0 +1,13 @@
+groups:
+  data_science_dev:
+    description: "DS users allowed to deploy DAGs to dev"
+    members:
+      - alice
+      - bob
+      - charlie
+
+  platform_engineers_dev:
+    description: "Platform engineers with dev deploy access"
+    members:
+      - platform_admin
+      - mlops_lead
