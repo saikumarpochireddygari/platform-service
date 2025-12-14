@@ -25,7 +25,7 @@ pipeline {
   }
 
   environment {
-    SHARED_DAG_DIR = '/shared/airflow_dags'
+    SHARED_DAG_DIR = '${WORKSPACE}/airflow/dags'
     SPOKE_DIR      = 'spoke_repo'
   }
 
