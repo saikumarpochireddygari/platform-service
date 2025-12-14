@@ -25,7 +25,7 @@ pipeline {
   }
 
   environment {
-    SHARED_DAG_DIR = "${WORKSPACE}/airflow/dags"
+    SHARED_DAG_DIR = "/workspace/airflow/dags"
     SPOKE_DIR      = 'spoke_repo'
   }
 
@@ -73,49 +73,56 @@ pipeline {
       }
     }
 
+    stage('Debug workspace paths') {
+  steps {
+    sh """
+      set -eux
+      echo "WORKSPACE=$WORKSPACE"
+      echo "PWD=$(pwd)"
+      echo "Listing repo airflow folder:"
+      ls -la "${WORKSPACE}/airflow" || true
+      ls -la "${WORKSPACE}/airflow/dags" || true
+    """
+  }
+}
+
     stage('Deploy DAGs to Airflow') {
-      steps {
-        script {
-          // Read project.json from the spoke repo
-          def manifestText = readFile("${env.SPOKE_DIR}/project.json")
-          def manifest     = readJSON(text: manifestText)
+  steps {
+    script {
+      def manifestText = readFile("${env.SPOKE_DIR}/project.json")
+      def manifest     = readJSON(text: manifestText)
 
-          def projectName = manifest.project_name
-          def dagPath     = manifest.dag_path
+      def projectName = manifest.project_name
+      def dagPath     = manifest.dag_path
 
-          if (!projectName) {
-            error "project_name is missing in project.json"
-          }
-          if (!dagPath) {
-            error "dag_path is missing in project.json"
-          }
+      if (!projectName) error "project_name is missing in project.json"
+      if (!dagPath)     error "dag_path is missing in project.json"
 
-          // Build source & destination DAG dirs
-          def srcDagDir  = "${env.SPOKE_DIR}/${dagPath}"
-          def destDagDir = "${env.SHARED_DAG_DIR}/${params.ENV}/${projectName}"
+      def srcDagDir  = "${env.SPOKE_DIR}/${dagPath}"
+      def destDagDir = "${env.AIRFLOW_DAGS_DIR}/${params.ENV}/${projectName}"
 
-          echo "Deploying DAGs for project ${projectName}"
-          echo "Source DAG dir: ${srcDagDir}"
-          echo "Destination DAG dir: ${destDagDir}"
+      echo "Source: ${srcDagDir}"
+      echo "Dest:   ${destDagDir}"
 
-          sh """
-            mkdir -p '${destDagDir}'
-            cp -r '${srcDagDir}'/*.py '${destDagDir}/'
-
-            echo "Files now in ${destDagDir}:"
-            ls -R '${destDagDir}'
-          """
-        }
-      }
+      sh """
+        set -eux
+        mkdir -p '${destDagDir}'
+        ls -la '${srcDagDir}' || true
+        cp -v '${srcDagDir}'/*.py '${destDagDir}/'
+        echo "Deployed files:"
+        ls -la '${destDagDir}'
+      """
     }
-    stage('Debug: show deployed DAGs in repo') {
-      steps {
-        sh """
-          echo "WORKSPACE=$WORKSPACE"
-          echo "Listing: ${SHARED_DAG_DIR}"
-          ls -R "${SHARED_DAG_DIR}" || true
-        """
-      }
+  }
+}
+    stage('Debug: show deployed DAGs (bind mount)') {
+  steps {
+    sh """
+      set -eux
+      echo "Listing /workspace/airflow/dags:"
+      ls -R /workspace/airflow/dags || true
+    """
+  }
 }
 
   }
