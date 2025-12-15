@@ -78,7 +78,7 @@ pipeline {
     sh """
       set -eux
       echo "WORKSPACE=$WORKSPACE"
-      echo "PWD=$(pwd)"
+      sh 'pwd'
       echo "Listing repo airflow folder:"
       ls -la "${WORKSPACE}/airflow" || true
       ls -la "${WORKSPACE}/airflow/dags" || true
