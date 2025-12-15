@@ -99,7 +99,7 @@ pipeline {
       if (!dagPath)     error "dag_path is missing in project.json"
 
       def srcDagDir  = "${env.SPOKE_DIR}/${dagPath}"
-      def destDagDir = "${env.AIRFLOW_DAGS_DIR}/${params.ENV}/${projectName}"
+      def destDagDir = "${env.SHARED_DAG_DIR}/${params.ENV}/${projectName}"
 
       echo "Source: ${srcDagDir}"
       echo "Dest:   ${destDagDir}"
