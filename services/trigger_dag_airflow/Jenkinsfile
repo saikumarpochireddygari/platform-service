@@ -39,7 +39,7 @@ pipeline {
       steps {
         withCredentials([
           usernamePassword(
-            credentialsId: 'airflow-basic-auth',
+            credentialsId: 'airflow_connection',
             usernameVariable: 'AIRFLOW_USERNAME',
             passwordVariable: 'AIRFLOW_PASSWORD'
           )
